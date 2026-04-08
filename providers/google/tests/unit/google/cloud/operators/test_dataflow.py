@@ -116,6 +116,7 @@ PUBSUB_TOPIC = f"projects/{PROJECT_ID}/topics/test-metrics-topic"
 BQ_DATASET = "test_dataset"
 BQ_TABLE = "dataflow_metrics"
 BQ_PROJECT = "test-bq-project"
+BQ_DATASET_LOCATION = "us-central1"
 DATAFLOW_PATH = "airflow.providers.google.cloud.operators.dataflow"
 OPERATOR_PATH = "airflow.providers.google.cloud.operators.dataflow"
 
@@ -870,6 +871,7 @@ def bq_operator():
         deferrable=False,
         bq_dataset=BQ_DATASET,
         bq_table=BQ_TABLE,
+        bq_dataset_location=BQ_DATASET_LOCATION,
         bq_project=BQ_PROJECT,
     )
 
@@ -887,6 +889,7 @@ def both_destinations_operator():
         pubsub_topic=PUBSUB_TOPIC,
         bq_dataset=BQ_DATASET,
         bq_table=BQ_TABLE,
+        bq_dataset_location=BQ_DATASET_LOCATION,
         bq_project=BQ_PROJECT,
     )
 
@@ -906,10 +909,11 @@ class TestDataflowGetMetricsOperatorInit:
         assert sync_operator.pubsub_topic is None
         assert sync_operator.bq_dataset is None
         assert sync_operator.bq_table is None
+        assert sync_operator.bq_dataset_location is None
 
     def test_template_fields(self):
         """Test that template_fields are correctly defined."""
-        expected = ("job_id", "project_id", "location", "pubsub_topic", "bq_dataset", "bq_table", "bq_project")
+        expected = ("job_id", "project_id", "location", "pubsub_topic", "bq_dataset", "bq_table", "bq_dataset_location", "bq_project")
         assert DataflowGetMetricsOperator.template_fields == expected
 
 
@@ -997,6 +1001,11 @@ class TestDataflowGetMetricsOperatorExecuteSync:
         result = bq_operator.execute(mock_context)
 
         mock_bq_hook.return_value.insert_all.assert_called_once()
+        mock_bq_hook.assert_called_once_with(
+            gcp_conn_id=GCP_CONN_ID,
+            impersonation_chain=None,
+            location=BQ_DATASET_LOCATION,
+        )
         _, kwargs = mock_bq_hook.return_value.insert_all.call_args
         assert kwargs["project_id"] == BQ_PROJECT
         assert kwargs["dataset_id"] == BQ_DATASET
