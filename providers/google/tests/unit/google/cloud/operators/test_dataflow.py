@@ -17,6 +17,7 @@
 # under the License.
 from __future__ import annotations
 
+import json
 from unittest import mock
 
 import httplib2
@@ -40,7 +41,10 @@ from airflow.providers.google.cloud.operators.dataflow import (
     DataflowStartYamlJobOperator,
     DataflowStopJobOperator,
     DataflowTemplatedJobStartOperator,
+    DataflowGetMetricsOperator,
 )
+from airflow.providers.google.cloud.triggers.dataflow import DataflowJobMetricsTrigger
+from airflow.providers.google.common.consts import GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME
 from airflow.version import version
 
 TASK_ID = "test-dataflow-operator"
@@ -86,6 +90,8 @@ TEST_FLEX_PARAMETERS = {
 TEST_LOCATION = "custom-location"
 TEST_REGION = "custom-region"
 TEST_PROJECT = "test-project"
+PROJECT_ID = "test-project"
+LOCATION = "us-central1"
 TEST_SQL_JOB_NAME = "test-sql-job-name"
 TEST_DATASET = "test-dataset"
 TEST_SQL_OPTIONS = {
@@ -106,7 +112,12 @@ TEST_SQL_JOB = {"id": "test-job-id"}
 GCP_CONN_ID = "test_gcp_conn_id"
 IMPERSONATION_CHAIN = ["impersonate", "this"]
 CANCEL_TIMEOUT = 10 * 420
+PUBSUB_TOPIC = f"projects/{PROJECT_ID}/topics/test-metrics-topic"
+BQ_DATASET = "test_dataset"
+BQ_TABLE = "dataflow_metrics"
+BQ_PROJECT = "test-bq-project"
 DATAFLOW_PATH = "airflow.providers.google.cloud.operators.dataflow"
+OPERATOR_PATH = "airflow.providers.google.cloud.operators.dataflow"
 
 TEST_PIPELINE_NAME = "test_data_pipeline_name"
 TEST_PIPELINE_BODY = {
@@ -130,6 +141,18 @@ TEST_PIPELINE_BODY = {
 }
 CONFLICTING_DEFERABLE_WAIT_UNTIL_FINISHED = "Conflict between deferrable and wait_until_finished parameters because it makes operator as blocking when it requires to be deferred. It should be True as deferrable parameter or True as wait_until_finished."
 
+SAMPLE_METRICS = {
+    "metrics": [
+        {
+            "name": {"name": "ElementCount", "origin": "dataflow/v1b3"},
+            "scalar": 1000.0,
+        },
+        {
+            "name": {"name": "ByteCount", "origin": "dataflow/v1b3"},
+            "scalar": 512000.0,
+        },
+    ]
+}
 
 class TestDataflowTemplatedJobStartOperator:
     @pytest.fixture
@@ -794,3 +817,293 @@ class TestDataflowDeletePipelineOperator:
             DataflowDeletePipelineOperator(**init_kwargs).execute(mock.MagicMock()).return_value = {
                 "error": {"message": "example error"}
             }
+
+@pytest.fixture
+def sync_operator():
+    """Create a synchronous DataflowGetMetricsOperator instance (no destination)."""
+    return DataflowGetMetricsOperator(
+        task_id=TASK_ID,
+        job_id=JOB_ID,
+        project_id=PROJECT_ID,
+        location=LOCATION,
+        gcp_conn_id=GCP_CONN_ID,
+        deferrable=False,
+    )
+
+
+@pytest.fixture
+def deferrable_operator():
+    """Create a deferrable DataflowGetMetricsOperator instance."""
+    return DataflowGetMetricsOperator(
+        task_id=TASK_ID,
+        job_id=JOB_ID,
+        project_id=PROJECT_ID,
+        location=LOCATION,
+        gcp_conn_id=GCP_CONN_ID,
+        deferrable=True,
+    )
+
+
+@pytest.fixture
+def pubsub_operator():
+    """Create an operator with PubSub topic destination."""
+    return DataflowGetMetricsOperator(
+        task_id=TASK_ID,
+        job_id=JOB_ID,
+        project_id=PROJECT_ID,
+        location=LOCATION,
+        gcp_conn_id=GCP_CONN_ID,
+        deferrable=False,
+        pubsub_topic=PUBSUB_TOPIC,
+    )
+
+
+@pytest.fixture
+def bq_operator():
+    """Create an operator with BigQuery destination."""
+    return DataflowGetMetricsOperator(
+        task_id=TASK_ID,
+        job_id=JOB_ID,
+        project_id=PROJECT_ID,
+        location=LOCATION,
+        gcp_conn_id=GCP_CONN_ID,
+        deferrable=False,
+        bq_dataset=BQ_DATASET,
+        bq_table=BQ_TABLE,
+        bq_project=BQ_PROJECT,
+    )
+
+
+@pytest.fixture
+def both_destinations_operator():
+    """Create an operator with both PubSub and BigQuery destinations."""
+    return DataflowGetMetricsOperator(
+        task_id=TASK_ID,
+        job_id=JOB_ID,
+        project_id=PROJECT_ID,
+        location=LOCATION,
+        gcp_conn_id=GCP_CONN_ID,
+        deferrable=False,
+        pubsub_topic=PUBSUB_TOPIC,
+        bq_dataset=BQ_DATASET,
+        bq_table=BQ_TABLE,
+        bq_project=BQ_PROJECT,
+    )
+
+
+class TestDataflowGetMetricsOperatorInit:
+    """Test operator initialization with default attributes."""
+
+    def test_default_attributes(self, sync_operator):
+        """Test that all default attributes are set correctly."""
+        assert sync_operator.job_id == JOB_ID
+        assert sync_operator.project_id == PROJECT_ID
+        assert sync_operator.location == LOCATION
+        assert sync_operator.gcp_conn_id == GCP_CONN_ID
+        assert sync_operator.deferrable is False
+        assert sync_operator.fail_on_terminal_state is False
+        assert sync_operator.poll_sleep == 10
+        assert sync_operator.pubsub_topic is None
+        assert sync_operator.bq_dataset is None
+        assert sync_operator.bq_table is None
+
+    def test_template_fields(self):
+        """Test that template_fields are correctly defined."""
+        expected = ("job_id", "project_id", "location", "pubsub_topic", "bq_dataset", "bq_table", "bq_project")
+        assert DataflowGetMetricsOperator.template_fields == expected
+
+
+class TestDataflowGetMetricsOperatorLocationValidation:
+    """Test location validation during execution."""
+
+    def test_execute_raises_when_location_is_none(self):
+        """Test that execute raises AirflowException when location is None."""
+        op = DataflowGetMetricsOperator(
+            task_id=TASK_ID,
+            job_id=JOB_ID,
+            project_id=PROJECT_ID,
+            location=None,
+            deferrable=False,
+        )
+        with pytest.raises(AirflowException, match="requires 'location' to be set"):
+            op.execute(mock.MagicMock())
+
+    def test_execute_raises_when_location_is_empty_string(self):
+        """Test that execute raises AirflowException when location is empty string."""
+        op = DataflowGetMetricsOperator(
+            task_id=TASK_ID,
+            job_id=JOB_ID,
+            project_id=PROJECT_ID,
+            location="",
+            deferrable=False,
+        )
+        with pytest.raises(AirflowException, match="requires 'location' to be set"):
+            op.execute(mock.MagicMock())
+
+
+class TestDataflowGetMetricsOperatorExecuteSync:
+    """Test synchronous execution with 5 scenarios."""
+
+    @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
+    def test_execute_sync_without_destination(self, mock_hook, sync_operator):
+        """Test sync execute without any destination (no pubsub/BQ)."""
+        mock_hook.return_value.fetch_job_metrics_by_id.return_value = SAMPLE_METRICS
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = sync_operator.execute(mock_context)
+
+        mock_hook.assert_called_once_with(
+            gcp_conn_id=GCP_CONN_ID,
+            impersonation_chain=None,
+        )
+        mock_hook.return_value.fetch_job_metrics_by_id.assert_called_once_with(
+            job_id=JOB_ID,
+            project_id=PROJECT_ID,
+            location=LOCATION,
+        )
+        assert result["job_id"] == JOB_ID
+        assert result["metric_count"] == 2
+        assert result["pubsub_topic"] is None
+        assert result["bq_destination"] is None
+
+    @mock.patch(f"{OPERATOR_PATH}.PubSubHook")
+    @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
+    def test_execute_sync_with_pubsub_only(self, mock_dataflow_hook, mock_pubsub_hook, pubsub_operator):
+        """Test sync execute with only PubSub destination."""
+        mock_dataflow_hook.return_value.fetch_job_metrics_by_id.return_value = SAMPLE_METRICS
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = pubsub_operator.execute(mock_context)
+
+        mock_pubsub_hook.return_value.publish.assert_called_once()
+        _, kwargs = mock_pubsub_hook.return_value.publish.call_args
+        assert kwargs["project_id"] == PROJECT_ID
+        assert kwargs["topic"] == "test-metrics-topic"
+        payload = json.loads(kwargs["messages"][0]["data"].decode())
+        assert payload["job_id"] == JOB_ID
+        assert len(payload["metrics"]) == 2
+
+        assert result["pubsub_topic"] == PUBSUB_TOPIC
+        assert result["pubsub_metrics_published"] == 2
+        assert result["bq_destination"] is None
+
+    @mock.patch(f"{OPERATOR_PATH}.BigQueryHook")
+    @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
+    def test_execute_sync_with_bq_only(self, mock_dataflow_hook, mock_bq_hook, bq_operator):
+        """Test sync execute with only BigQuery destination."""
+        mock_dataflow_hook.return_value.fetch_job_metrics_by_id.return_value = SAMPLE_METRICS
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = bq_operator.execute(mock_context)
+
+        mock_bq_hook.return_value.insert_all.assert_called_once()
+        _, kwargs = mock_bq_hook.return_value.insert_all.call_args
+        assert kwargs["project_id"] == BQ_PROJECT
+        assert kwargs["dataset_id"] == BQ_DATASET
+        assert kwargs["table_id"] == BQ_TABLE
+        assert len(kwargs["rows"]) == 2
+
+        assert result["bq_destination"] == f"{BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}"
+        assert result["bq_rows_written"] == 2
+        assert result["pubsub_topic"] is None
+
+    @mock.patch(f"{OPERATOR_PATH}.BigQueryHook")
+    @mock.patch(f"{OPERATOR_PATH}.PubSubHook")
+    @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
+    def test_execute_sync_with_both_destinations(
+        self, mock_dataflow_hook, mock_pubsub_hook, mock_bq_hook, both_destinations_operator
+    ):
+        """Test sync execute with both PubSub and BigQuery destinations."""
+        mock_dataflow_hook.return_value.fetch_job_metrics_by_id.return_value = SAMPLE_METRICS
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = both_destinations_operator.execute(mock_context)
+
+        mock_pubsub_hook.return_value.publish.assert_called_once()
+        mock_bq_hook.return_value.insert_all.assert_called_once()
+        assert result["pubsub_metrics_published"] == 2
+        assert result["bq_rows_written"] == 2
+        assert result["metric_count"] == 2
+
+
+class TestDataflowGetMetricsOperatorExecuteDeferred:
+    """Test deferrable execution."""
+
+    @mock.patch(f"{OPERATOR_PATH}.DataflowGetMetricsOperator.defer")
+    def test_execute_deferred_calls_defer(self, mock_defer, deferrable_operator):
+        """Test that deferrable operator calls defer method."""
+        deferrable_operator.execute(mock.MagicMock())
+        mock_defer.assert_called_once()
+
+    @mock.patch(f"{OPERATOR_PATH}.DataflowGetMetricsOperator.defer")
+    def test_execute_deferred_with_correct_trigger(self, mock_defer, deferrable_operator):
+        """Test that deferrable operator creates trigger with correct parameters."""
+        deferrable_operator.execute(mock.MagicMock())
+
+        _, kwargs = mock_defer.call_args
+        trigger = kwargs["trigger"]
+
+        assert isinstance(trigger, DataflowJobMetricsTrigger)
+        assert trigger.job_id == JOB_ID
+        assert trigger.project_id == PROJECT_ID
+        assert trigger.location == LOCATION
+        assert trigger.gcp_conn_id == GCP_CONN_ID
+        assert trigger.fail_on_terminal_state is False
+        assert kwargs["method_name"] == GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME
+
+
+class TestDataflowGetMetricsOperatorExecuteComplete:
+    """Test execute_complete callback."""
+
+    def test_execute_complete_raises_when_event_is_none(self, sync_operator):
+        """Test that execute_complete raises AirflowException when event is None."""
+        with pytest.raises(AirflowException, match="No trigger event received"):
+            sync_operator.execute_complete(context=mock.MagicMock(), event=None)
+
+    def test_execute_complete_raises_on_error_status(self, sync_operator):
+        """Test that execute_complete raises AirflowException on error status."""
+        with pytest.raises(AirflowException, match="Trigger failed"):
+            sync_operator.execute_complete(
+                context=mock.MagicMock(),
+                event={"status": "error", "message": "Job failed"},
+            )
+
+    @mock.patch(f"{OPERATOR_PATH}.PubSubHook")
+    def test_execute_complete_success_with_pubsub(self, mock_pubsub_hook, pubsub_operator):
+        """Test execute_complete with success status and PubSub destination."""
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = pubsub_operator.execute_complete(
+            context=mock_context,
+            event={"status": "success", "result": SAMPLE_METRICS["metrics"]},
+        )
+
+        mock_pubsub_hook.return_value.publish.assert_called_once()
+        assert result["pubsub_metrics_published"] == 2
+        assert result["metric_count"] == 2
+
+    @mock.patch(f"{OPERATOR_PATH}.BigQueryHook")
+    def test_execute_complete_success_with_bq(self, mock_bq_hook, bq_operator):
+        """Test execute_complete with success status and BigQuery destination."""
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = bq_operator.execute_complete(
+            context=mock_context,
+            event={"status": "success", "result": SAMPLE_METRICS["metrics"]},
+        )
+
+        mock_bq_hook.return_value.insert_all.assert_called_once()
+        assert result["bq_rows_written"] == 2
+
+    def test_execute_complete_success_without_destination(self, sync_operator):
+        """Test execute_complete with success status and no destination."""
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = sync_operator.execute_complete(
+            context=mock_context,
+            event={"status": "success", "result": SAMPLE_METRICS["metrics"]},
+        )
+
+        assert result["metric_count"] == 2
+        assert result["pubsub_topic"] is None
+        assert result["bq_destination"] is None
