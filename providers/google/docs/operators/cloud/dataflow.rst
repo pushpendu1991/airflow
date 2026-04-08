@@ -384,6 +384,41 @@ For batch pipelines, if a job is currently running and you want to update its co
 
 If the batch pipeline has already been completed successfully, then there is no running job to update; the new configuration will only be applied to the next job submission.
 
+Collecting Dataflow Job Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To collect and route metrics from a running Dataflow job, use :class:`~airflow.providers.google.cloud.operators.dataflow.DataflowGetMetricsOperator`.
+This operator fetches job metrics and routes them to Pub/Sub, BigQuery, or both destinations for real-time monitoring and historical analysis.
+
+Here is an example of collecting Dataflow job metrics and streaming them to BigQuery:
+
+.. exampleinclude::
+    /../../google/tests/system/google/cloud/dataflow/example_dataflow_get_metrics.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_dataflow_get_metrics_bigquery]
+    :end-before: [END howto_operator_dataflow_get_metrics_bigquery]
+
+You can also route metrics to multiple destinations simultaneously (Pub/Sub and BigQuery):
+
+.. exampleinclude::
+    /../../google/tests/system/google/cloud/dataflow/example_dataflow_get_metrics.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_dataflow_get_metrics_multi_destination]
+    :end-before: [END howto_operator_dataflow_get_metrics_multi_destination]
+
+For deferrable (async) mode which releases the worker slot:
+
+.. exampleinclude::
+    /../../google/tests/system/google/cloud/dataflow/example_dataflow_get_metrics.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_dataflow_get_metrics_pubsub_deferrable]
+    :end-before: [END howto_operator_dataflow_get_metrics_pubsub_deferrable]
+
+See the `Dataflow metrics documentation <https://cloud.google.com/dataflow/docs/guides/using-monitoring-intf/>`__ for more information.
+
 .. _howto/operator:DataflowJobStatusSensor:
 .. _howto/operator:DataflowJobMetricsSensor:
 .. _howto/operator:DataflowJobMessagesSensor:
