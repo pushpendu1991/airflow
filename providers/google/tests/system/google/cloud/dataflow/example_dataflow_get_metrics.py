@@ -45,6 +45,7 @@ PUBSUB_TOPIC = f"projects/{PROJECT_ID}/topics/dataflow-metrics-{ENV_ID}"
 BQ_DATASET = "dataflow_metrics"
 BQ_TABLE = "job_metrics"
 BQ_PROJECT = PROJECT_ID
+BQ_DATASET_LOCATION = LOCATION
 
 def print_metrics_summary(**context):
     """
@@ -91,6 +92,7 @@ with DAG(
         location=LOCATION,
         bq_dataset=BQ_DATASET,
         bq_table=BQ_TABLE,
+        bq_dataset_location=BQ_DATASET_LOCATION,
         bq_project=BQ_PROJECT,
         deferrable=False, 
         gcp_conn_id="google_cloud_default",
@@ -119,6 +121,7 @@ with DAG(
         pubsub_topic=PUBSUB_TOPIC,
         bq_dataset=BQ_DATASET,
         bq_table=BQ_TABLE,
+        bq_dataset_location=BQ_DATASET_LOCATION,
         bq_project=BQ_PROJECT,
         deferrable=True,
         poll_sleep=10,
