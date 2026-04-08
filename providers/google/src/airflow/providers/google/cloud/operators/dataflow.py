@@ -1213,6 +1213,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
     :param pubsub_topic: Full Pub/Sub topic path:
                          ``projects/<project>/topics/<topic>``. Jinja-templated.
     :param bq_dataset: BigQuery dataset ID to write metrics into. Jinja-templated.
+    :param bq_dataset_location: BigQuery dataset location used by the hook. Jinja-templated.
     :param bq_table: BigQuery table ID to write metrics into. Jinja-templated.
     :param bq_project: BigQuery project (defaults to ``project_id``). Jinja-templated.
     :param gcp_conn_id: Airflow GCP connection.
@@ -1227,6 +1228,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
         "location",
         "pubsub_topic",
         "bq_dataset",
+        "bq_dataset_location",
         "bq_table",
         "bq_project",
     )
@@ -1240,6 +1242,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
         location: str | None = DEFAULT_DATAFLOW_LOCATION,
         pubsub_topic: str | None = None,
         bq_dataset: str | None = None,
+        bq_dataset_location: str | None = None,
         bq_table: str | None = None,
         bq_project: str | None = None,
         gcp_conn_id: str = "google_cloud_default",
@@ -1255,6 +1258,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
         self.location = location
         self.pubsub_topic = pubsub_topic
         self.bq_dataset = bq_dataset
+        self.bq_dataset_location = bq_dataset_location
         self.bq_table = bq_table
         self.bq_project = bq_project or project_id
         self.gcp_conn_id = gcp_conn_id
@@ -1357,6 +1361,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
         hook = BigQueryHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
+            location=self.bq_dataset_location,
         )
         hook.insert_all(
             project_id=self.bq_project,
