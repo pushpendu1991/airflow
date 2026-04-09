@@ -36,12 +36,12 @@ from airflow.providers.google.cloud.hooks.dataflow import (
 from airflow.providers.google.cloud.operators.dataflow import (
     DataflowCreatePipelineOperator,
     DataflowDeletePipelineOperator,
+    DataflowGetMetricsOperator,
     DataflowRunPipelineOperator,
     DataflowStartFlexTemplateOperator,
     DataflowStartYamlJobOperator,
     DataflowStopJobOperator,
     DataflowTemplatedJobStartOperator,
-    DataflowGetMetricsOperator,
 )
 from airflow.providers.google.cloud.triggers.dataflow import DataflowJobMetricsTrigger
 from airflow.providers.google.common.consts import GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME
@@ -913,7 +913,16 @@ class TestDataflowGetMetricsOperatorInit:
 
     def test_template_fields(self):
         """Test that template_fields are correctly defined."""
-        expected = ("job_id", "project_id", "location", "pubsub_topic", "bq_dataset", "bq_table", "bq_dataset_location", "bq_project")
+        expected = (
+            "job_id", 
+            "project_id", 
+            "location", 
+            "pubsub_topic", 
+            "bq_dataset", 
+            "bq_table", 
+            "bq_dataset_location", 
+            "bq_project"
+        )
         assert DataflowGetMetricsOperator.template_fields == expected
 
 
