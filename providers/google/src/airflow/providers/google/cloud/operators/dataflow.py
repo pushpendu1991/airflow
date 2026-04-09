@@ -35,8 +35,8 @@ from airflow.providers.google.cloud.hooks.dataflow import (
     DEFAULT_DATAFLOW_LOCATION,
     DataflowHook,
 )
-from airflow.providers.google.cloud.links.dataflow import DataflowJobLink, DataflowPipelineLink
 from airflow.providers.google.cloud.hooks.pubsub import PubSubHook
+from airflow.providers.google.cloud.links.dataflow import DataflowJobLink, DataflowPipelineLink
 from airflow.providers.google.cloud.operators.cloud_base import GoogleCloudBaseOperator
 from airflow.providers.google.cloud.triggers.dataflow import (
     DataflowJobMetricsTrigger,
@@ -1299,8 +1299,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
             _, topic_project, _, topic_id = self.pubsub_topic.split("/")
         except ValueError:
             raise AirflowException(
-                f"pubsub_topic must be 'projects/<project>/topics/<topic>', "
-                f"got: {self.pubsub_topic}"
+                f"pubsub_topic must be 'projects/<project>/topics/<topic>', got: {self.pubsub_topic}"
             )
 
         metric_entries = metrics.get("metrics", [])
@@ -1321,7 +1320,9 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
         published_count = len(metric_entries)
         self.log.info(
             "Published %d metric entries for job %s → topic %s",
-            published_count, self.job_id, self.pubsub_topic,
+            published_count, 
+            self.job_id, 
+            self.pubsub_topic,
         )
         return published_count
 
@@ -1342,17 +1343,20 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
             else:
                 self.log.warning(
                     "Unexpected scalar type %s for metric %s, skipping scalar value.",
-                    type(scalar_obj).__name__, name_obj.get("name"),
+                    type(scalar_obj).__name__, 
+                    name_obj.get("name"),
                 )
                 scalar = None
 
-            rows.append({
-                "job_id": self.job_id,
-                "metric_name": name_obj.get("name", ""),
-                "origin": name_obj.get("origin", ""),
-                "scalar": scalar,
-                "collected_at": collected_at,
-            })
+            rows.append(
+                {
+                    "job_id": self.job_id,
+                    "metric_name": name_obj.get("name", ""),
+                    "origin": name_obj.get("origin", ""),
+                    "scalar": scalar,
+                    "collected_at": collected_at,
+                }
+            )
 
         if not rows:
             self.log.warning("No metric entries to write to BigQuery for job %s", self.job_id)
@@ -1373,8 +1377,11 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
         )
         self.log.info(
             "Streamed %d metric rows for job %s → %s.%s.%s",
-            len(rows), self.job_id,
-            self.bq_project, self.bq_dataset, self.bq_table,
+            len(rows), 
+            self.job_id,
+            self.bq_project, 
+            self.bq_dataset, 
+            self.bq_table,
         )
         return len(rows)
 
@@ -1387,7 +1394,8 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
             self.log.warning(
                 "No destination configured for job %s metrics (%d entries). "
                 "Provide pubsub_topic and/or bq_dataset+bq_table to persist results.",
-                self.job_id, metric_count,
+                self.job_id, 
+                metric_count,
             )
 
         pubsub_metrics_published = self._publish_to_pubsub(metrics) if has_pubsub else None
@@ -1399,8 +1407,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
             "pubsub_topic": self.pubsub_topic if has_pubsub else None,
             "pubsub_metrics_published": pubsub_metrics_published,
             "bq_destination": (
-                f"{self.bq_project}.{self.bq_dataset}.{self.bq_table}"
-                if has_bq else None
+                f"{self.bq_project}.{self.bq_dataset}.{self.bq_table}" if has_bq else None
             ),
             "bq_rows_written": bq_rows_written,
         }
@@ -1412,8 +1419,14 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
         self.log.info(
             "DataflowGetMetricsOperator | job_id=%s project=%s location=%s "
             "deferrable=%s pubsub_topic=%s bq=%s.%s.%s",
-            self.job_id, self.project_id, self.location, self.deferrable,
-            self.pubsub_topic, self.bq_project, self.bq_dataset, self.bq_table,
+            self.job_id, 
+            self.project_id, 
+            self.location, 
+            self.deferrable,
+            self.pubsub_topic, 
+            self.bq_project, 
+            self.bq_dataset, 
+            self.bq_table,
         )
 
         if not self.location:
@@ -1438,16 +1451,10 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
             method_name=GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME,
         )
 
-    def execute_complete(
-        self, context: Context, event: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def execute_complete(self, context: Context, event: dict[str, Any] | None = None) -> dict[str, Any]:
         if event is None:
-            raise AirflowException(
-                f"No trigger event received for job_id={self.job_id}"
-            )
+            raise AirflowException(f"No trigger event received for job_id={self.job_id}")
         if event.get("status") == "error":
-            raise AirflowException(
-                f"Trigger failed for job_id={self.job_id}: {event.get('message')}"
-            )
+            raise AirflowException(f"Trigger failed for job_id={self.job_id}: {event.get('message')}")
         return self._route(self._normalise(event.get("result", {})), context)
 
