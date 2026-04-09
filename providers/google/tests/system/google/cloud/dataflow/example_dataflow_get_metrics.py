@@ -28,12 +28,12 @@ This DAG demonstrates how to use DataflowGetMetricsOperator to:
 
 import os
 from datetime import datetime
-from pathlib import Path
 
 from airflow import DAG
+from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.operators.dataflow import DataflowGetMetricsOperator
-from airflow.operators.empty import EmptyOperator
+
 from system.google import DEFAULT_GCP_SYSTEM_TEST_PROJECT_ID
 
 ENV_ID = os.environ.get("SYSTEM_TESTS_ENV_ID", "default")
@@ -54,10 +54,7 @@ def print_metrics_summary(**context):
     """
     task_instance = context["task_instance"]
     
-    metrics_summary = task_instance.xcom_pull(
-        task_ids="collect_metrics_bigquery",
-        key="metrics_summary"
-    )
+    metrics_summary = task_instance.xcom_pull(task_ids="collect_metrics_bigquery", key="metrics_summary")
     
     if metrics_summary:
         print("=" * 70)
@@ -94,7 +91,7 @@ with DAG(
         bq_table=BQ_TABLE,
         bq_dataset_location=BQ_DATASET_LOCATION,
         bq_project=BQ_PROJECT,
-        deferrable=False, 
+        deferrable=False,
         gcp_conn_id="google_cloud_default",
     )
     # [END howto_operator_dataflow_get_metrics_bigquery]
