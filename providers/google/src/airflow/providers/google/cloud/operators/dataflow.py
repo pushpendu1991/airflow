@@ -1205,8 +1205,10 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
                                            full payload), keeping the metadata DB lean
     Execution modes
     ───────────────
-    • deferrable=True  (default) — defers to DataflowJobMetricsTrigger.
+    • deferrable=True            — defers to DataflowJobMetricsTrigger.
     • deferrable=False           — blocks the worker (small/test jobs only).
+    • default behavior           — configuration-driven; if unset, defaults to
+                                   non-deferrable (``False``).
     :param job_id: Dataflow job ID. Jinja-templated.
     :param project_id: GCP project that owns the Dataflow job. Jinja-templated.
     :param location: Dataflow job region. Jinja-templated.
@@ -1338,7 +1340,9 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
             elif isinstance(scalar_obj, (int, float)):
                 scalar = float(scalar_obj)
             elif isinstance(scalar_obj, dict):
-                raw = scalar_obj.get("integer_value") or scalar_obj.get("floatValue")
+                raw = scalar_obj.get("integer_value")
+                if raw is None:
+                    raw = scalar_obj.get("floatValue")
                 scalar = float(raw) if raw is not None else None
             else:
                 self.log.warning(
