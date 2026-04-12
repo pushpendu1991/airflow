@@ -918,10 +918,10 @@ class TestDataflowGetMetricsOperatorInit:
             "project_id", 
             "location", 
             "pubsub_topic", 
-            "bq_dataset", 
+            "bq_dataset",
+            "bq_dataset_location",
             "bq_table", 
-            "bq_dataset_location", 
-            "bq_project"
+            "bq_project",
         )
         assert DataflowGetMetricsOperator.template_fields == expected
 
