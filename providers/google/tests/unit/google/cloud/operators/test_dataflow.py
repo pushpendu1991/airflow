@@ -955,7 +955,7 @@ class TestDataflowGetMetricsOperatorLocationValidation:
 
 
 class TestDataflowGetMetricsOperatorExecuteSync:
-    """Test synchronous execution with 5 scenarios."""
+    """Test synchronous execution with 4 scenarios."""
 
     @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
     def test_execute_sync_without_destination(self, mock_hook, sync_operator):
