@@ -72,7 +72,6 @@ def print_metrics_summary(**context):
 
 with DAG(
     DAG_ID,
-    default_args=default_args,
     schedule="@once",
     start_date=datetime(2024, 1, 1),
     catchup=False,
@@ -84,7 +83,7 @@ with DAG(
     # [START howto_operator_dataflow_get_metrics_bigquery]
     collect_metrics_bigquery = DataflowGetMetricsOperator(
         task_id="collect_metrics_bigquery",
-        job_id="{{ dag_run.conf['dataflow_job_id'] or 'test-job-id' }}",
+        job_id="{{ dag_run.conf.get('dataflow_job_id', 'test-job-id') }}",
         project_id=PROJECT_ID,
         location=LOCATION,
         bq_dataset=BQ_DATASET,
@@ -130,19 +129,16 @@ with DAG(
     process_metrics_summary = PythonOperator(
         task_id="process_metrics_summary",
         python_callable=print_metrics_summary,
-        provide_context=True,
     )
     # [END howto_operator_dataflow_get_metrics_xcom_processing]
 
     end_task = EmptyOperator(task_id="end_task")
 
-    start_task [
+    start_task >> [
         collect_metrics_bigquery,
         collect_metrics_pubsub,
         collect_metrics_multi_destination,
-    ]
-    collect_metrics_bigquery >> process_metrics_summary >> end_task
-
+    ] >> process_metrics_summary >> end_task
 
 from tests_common.test_utils.watcher import watcher  # noqa: E402
 
