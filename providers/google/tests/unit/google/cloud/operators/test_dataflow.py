@@ -145,12 +145,17 @@ CONFLICTING_DEFERABLE_WAIT_UNTIL_FINISHED = "Conflict between deferrable and wai
 SAMPLE_METRICS = {
     "metrics": [
         {
-            "name": {"name": "ElementCount", "origin": "dataflow/v1b3"},
-            "scalar": 1000.0,
-        },
-        {
-            "name": {"name": "ByteCount", "origin": "dataflow/v1b3"},
-            "scalar": 512000.0,
+            "name": {
+                "name": "FalconMapFunction_COUNT",
+                "origin": "user",
+                "context": {
+                    "step": "--StepDesc------StepType---TRANSFORM---Step---joinReportCondWithExpression---Map-ParMultiDo-test",
+                    "namespace": "joinReportCondWithExpression",
+                    "tentative": "true",
+                    "output_user_name": "--StepDesc------StepType---TRANSFORM---Step---joinReportCondWithExpression---Map-ParMultiDo-test",
+                },
+            },
+            "scalar": 312,
         },
     ]
 }
@@ -1026,6 +1031,51 @@ class TestDataflowGetMetricsOperatorExecuteSync:
         assert result["pubsub_topic"] is None
 
     @mock.patch(f"{OPERATOR_PATH}.BigQueryHook")
+    @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
+    def test_execute_sync_with_bq_includes_context(self, mock_dataflow_hook, mock_bq_hook, bq_operator):
+        """Test that context field is extracted and serialized in BigQuery rows."""
+        mock_dataflow_hook.return_value.fetch_job_metrics_by_id.return_value = SAMPLE_METRICS
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = bq_operator.execute(mock_context)
+
+        mock_bq_hook.return_value.insert_all.assert_called_once()
+        _, kwargs = mock_bq_hook.return_value.insert_all.call_args
+        rows = kwargs["rows"]
+
+        assert len(rows) == 1
+        assert rows[0]["metric_name"] == "FalconMapFunction_COUNT"
+        assert rows[0]["origin"] == "user"
+        assert rows[0]["scalar"] == 312
+
+        assert rows[0]["context"] is not None
+        context_dict = json.loads(rows[0]["context"])
+        assert context_dict["step"] == "--StepDesc------StepType---TRANSFORM---Step---joinReportCondWithExpression---Map-ParMultiDo-test"
+        assert context_dict["namespace"] == "joinReportCondWithExpression"
+        assert context_dict["tentative"] == "true"
+        assert context_dict["output_user_name"] == "--StepDesc------StepType---TRANSFORM---Step---joinReportCondWithExpression---Map-ParMultiDo-test"
+
+        assert result["bq_rows_written"] == 1
+
+    @mock.patch(f"{OPERATOR_PATH}.BigQueryHook")
+    @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
+    def test_execute_sync_with_bq_context_missing(self, mock_dataflow_hook, mock_bq_hook, bq_operator):
+        """Test that context field is None when not provided in metrics."""
+        mock_dataflow_hook.return_value.fetch_job_metrics_by_id.return_value = SAMPLE_METRICS
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = bq_operator.execute(mock_context)
+
+        mock_bq_hook.return_value.insert_all.assert_called_once()
+        _, kwargs = mock_bq_hook.return_value.insert_all.call_args
+        rows = kwargs["rows"]
+
+        assert len(rows) == 2
+        for row in rows:
+            assert row["context"] is None
+        assert result["bq_rows_written"] == 2
+
+    @mock.patch(f"{OPERATOR_PATH}.BigQueryHook")
     @mock.patch(f"{OPERATOR_PATH}.PubSubHook")
     @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
     def test_execute_sync_with_both_destinations(
@@ -1125,3 +1175,23 @@ class TestDataflowGetMetricsOperatorExecuteComplete:
         assert result["metric_count"] == 2
         assert result["pubsub_topic"] is None
         assert result["bq_destination"] is None
+
+    @mock.patch(f"{OPERATOR_PATH}.BigQueryHook")
+    def test_execute_complete_success_with_bq_includes_context(self, mock_bq_hook, bq_operator):
+        """Test execute_complete with context field in BigQuery rows."""
+        mock_context = {"task_instance": mock.MagicMock()}
+
+        result = bq_operator.execute_complete(
+            context=mock_context,
+            event={"status": "success", "result": SAMPLE_METRICS["metrics"]},
+        )
+
+        mock_bq_hook.return_value.insert_all.assert_called_once()
+        _, kwargs = mock_bq_hook.return_value.insert_all.call_args
+        rows = kwargs["rows"]
+
+        assert len(rows) == 1
+        assert rows[0]["context"] is not None
+        context_dict = json.loads(rows[0]["context"])
+        assert context_dict["namespace"] == "joinReportCondWithExpression"
+        assert result["bq_rows_written"] == 1
