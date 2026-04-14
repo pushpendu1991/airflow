@@ -1191,6 +1191,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
     job_id        STRING    NOT NULL,
     metric_name   STRING,
     origin        STRING,
+    context       JSON,
     scalar        FLOAT64,
     collected_at  TIMESTAMP NOT NULL
     )
@@ -1357,6 +1358,7 @@ class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
                     "job_id": self.job_id,
                     "metric_name": name_obj.get("name", ""),
                     "origin": name_obj.get("origin", ""),
+                    "context": json.dumps(name_obj.get("context", {})) if name_obj.get("context") else None,
                     "scalar": scalar,
                     "collected_at": collected_at,
                 }
