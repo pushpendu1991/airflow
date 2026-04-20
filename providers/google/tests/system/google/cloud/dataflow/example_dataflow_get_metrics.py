@@ -18,7 +18,7 @@
 """
 Example Airflow DAG for Google Cloud Dataflow Get Metrics Operator.
 
-This DAG demonstrates how to use DataflowGetMetricsOperator to:
+This DAG demonstrates how to use DataflowJobMetricsOperator to:
 1. Collect metrics from a running Dataflow job
 2. Route metrics to Pub/Sub for real-time streaming
 3. Stream metrics into BigQuery for historical analysis
@@ -32,7 +32,7 @@ from datetime import datetime
 from airflow import DAG
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
-from airflow.providers.google.cloud.operators.dataflow import DataflowGetMetricsOperator
+from airflow.providers.google.cloud.operators.dataflow import DataflowJobMetricsOperator
 
 from system.google import DEFAULT_GCP_SYSTEM_TEST_PROJECT_ID
 
@@ -49,7 +49,7 @@ BQ_DATASET_LOCATION = LOCATION
 
 def print_metrics_summary(**context):
     """
-    Print the metrics summary pushed to XCom by DataflowGetMetricsOperator.
+    Print the metrics summary pushed to XCom by DataflowJobMetricsOperator.
     Demonstrates how to consume metrics data in downstream tasks.
     """
     task_instance = context["task_instance"]
@@ -81,7 +81,7 @@ with DAG(
     start_task = EmptyOperator(task_id="start_task")
 
     # [START howto_operator_dataflow_get_metrics_bigquery]
-    collect_metrics_bigquery = DataflowGetMetricsOperator(
+    collect_metrics_bigquery = DataflowJobMetricsOperator(
         task_id="collect_metrics_bigquery",
         job_id="{{ dag_run.conf.get('dataflow_job_id', 'test-job-id') }}",
         project_id=PROJECT_ID,
@@ -96,7 +96,7 @@ with DAG(
     # [END howto_operator_dataflow_get_metrics_bigquery]
 
     # [START howto_operator_dataflow_get_metrics_pubsub_deferrable]
-    collect_metrics_pubsub = DataflowGetMetricsOperator(
+    collect_metrics_pubsub = DataflowJobMetricsOperator(
         task_id="collect_metrics_pubsub",
         job_id="{{ dag_run.conf['dataflow_job_id'] or 'test-job-id' }}",
         project_id=PROJECT_ID,
@@ -109,7 +109,7 @@ with DAG(
     # [END howto_operator_dataflow_get_metrics_pubsub_deferrable]
 
     # [START howto_operator_dataflow_get_metrics_multi_destination]
-    collect_metrics_multi_destination = DataflowGetMetricsOperator(
+    collect_metrics_multi_destination = DataflowJobMetricsOperator(
         task_id="collect_metrics_fanout",
         job_id="{{ dag_run.conf['dataflow_job_id'] or 'test-job-id' }}",
         project_id=PROJECT_ID,
