@@ -1182,7 +1182,7 @@ class DataflowDeletePipelineOperator(GoogleCloudBaseOperator):
 
         return None
 
-class DataflowGetMetricsOperator(GoogleCloudBaseOperator):
+class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
     """
     Fetches metrics for a Dataflow job and routes the result to one or more
     destinations based on what the caller provides.
