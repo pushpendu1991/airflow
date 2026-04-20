@@ -36,7 +36,7 @@ from airflow.providers.google.cloud.hooks.dataflow import (
 from airflow.providers.google.cloud.operators.dataflow import (
     DataflowCreatePipelineOperator,
     DataflowDeletePipelineOperator,
-    DataflowGetMetricsOperator,
+    DataflowJobMetricsOperator,
     DataflowRunPipelineOperator,
     DataflowStartFlexTemplateOperator,
     DataflowStartYamlJobOperator,
@@ -826,8 +826,8 @@ class TestDataflowDeletePipelineOperator:
 
 @pytest.fixture
 def sync_operator():
-    """Create a synchronous DataflowGetMetricsOperator instance (no destination)."""
-    return DataflowGetMetricsOperator(
+    """Create a synchronous DataflowJobMetricsOperator instance (no destination)."""
+    return DataflowJobMetricsOperator(
         task_id=TASK_ID,
         job_id=JOB_ID,
         project_id=PROJECT_ID,
@@ -839,8 +839,8 @@ def sync_operator():
 
 @pytest.fixture
 def deferrable_operator():
-    """Create a deferrable DataflowGetMetricsOperator instance."""
-    return DataflowGetMetricsOperator(
+    """Create a deferrable DataflowJobMetricsOperator instance."""
+    return DataflowJobMetricsOperator(
         task_id=TASK_ID,
         job_id=JOB_ID,
         project_id=PROJECT_ID,
@@ -853,7 +853,7 @@ def deferrable_operator():
 @pytest.fixture
 def pubsub_operator():
     """Create an operator with PubSub topic destination."""
-    return DataflowGetMetricsOperator(
+    return DataflowJobMetricsOperator(
         task_id=TASK_ID,
         job_id=JOB_ID,
         project_id=PROJECT_ID,
@@ -867,7 +867,7 @@ def pubsub_operator():
 @pytest.fixture
 def bq_operator():
     """Create an operator with BigQuery destination."""
-    return DataflowGetMetricsOperator(
+    return DataflowJobMetricsOperator(
         task_id=TASK_ID,
         job_id=JOB_ID,
         project_id=PROJECT_ID,
@@ -884,7 +884,7 @@ def bq_operator():
 @pytest.fixture
 def both_destinations_operator():
     """Create an operator with both PubSub and BigQuery destinations."""
-    return DataflowGetMetricsOperator(
+    return DataflowJobMetricsOperator(
         task_id=TASK_ID,
         job_id=JOB_ID,
         project_id=PROJECT_ID,
@@ -899,7 +899,7 @@ def both_destinations_operator():
     )
 
 
-class TestDataflowGetMetricsOperatorInit:
+class TestDataflowJobMetricsOperatorInit:
     """Test operator initialization with default attributes."""
 
     def test_default_attributes(self, sync_operator):
@@ -928,38 +928,38 @@ class TestDataflowGetMetricsOperatorInit:
             "bq_table", 
             "bq_project",
         )
-        assert DataflowGetMetricsOperator.template_fields == expected
+        assert DataflowJobMetricsOperator.template_fields == expected
 
 
-class TestDataflowGetMetricsOperatorLocationValidation:
+class TestDataflowJobMetricsOperatorLocationValidation:
     """Test location validation during execution."""
 
     def test_execute_raises_when_location_is_none(self):
-        """Test that execute raises AirflowException when location is None."""
-        op = DataflowGetMetricsOperator(
+        """Test that execute raises ValueError when location is None."""
+        op = DataflowJobMetricsOperator(
             task_id=TASK_ID,
             job_id=JOB_ID,
             project_id=PROJECT_ID,
             location=None,
             deferrable=False,
         )
-        with pytest.raises(AirflowException, match="requires 'location' to be set"):
+        with pytest.raises(ValueError, match="DataflowJobMetricsOperator requires 'location' to be set"):
             op.execute(mock.MagicMock())
 
     def test_execute_raises_when_location_is_empty_string(self):
-        """Test that execute raises AirflowException when location is empty string."""
-        op = DataflowGetMetricsOperator(
+        """Test that execute raises ValueError when location is empty string."""
+        op = DataflowJobMetricsOperator(
             task_id=TASK_ID,
             job_id=JOB_ID,
             project_id=PROJECT_ID,
             location="",
             deferrable=False,
         )
-        with pytest.raises(AirflowException, match="requires 'location' to be set"):
+        with pytest.raises(ValueError, match="DataflowJobMetricsOperator requires 'location' to be set"):
             op.execute(mock.MagicMock())
 
 
-class TestDataflowGetMetricsOperatorExecuteSync:
+class TestDataflowJobMetricsOperatorExecuteSync:
     """Test synchronous execution with 4 scenarios."""
 
     @mock.patch(f"{OPERATOR_PATH}.DataflowHook")
@@ -1094,16 +1094,16 @@ class TestDataflowGetMetricsOperatorExecuteSync:
         assert result["metric_count"] == 2
 
 
-class TestDataflowGetMetricsOperatorExecuteDeferred:
+class TestDataflowJobMetricsOperatorExecuteDeferred:
     """Test deferrable execution."""
 
-    @mock.patch(f"{OPERATOR_PATH}.DataflowGetMetricsOperator.defer")
+    @mock.patch(f"{OPERATOR_PATH}.DataflowJobMetricsOperator.defer")
     def test_execute_deferred_calls_defer(self, mock_defer, deferrable_operator):
         """Test that deferrable operator calls defer method."""
         deferrable_operator.execute(mock.MagicMock())
         mock_defer.assert_called_once()
 
-    @mock.patch(f"{OPERATOR_PATH}.DataflowGetMetricsOperator.defer")
+    @mock.patch(f"{OPERATOR_PATH}.DataflowJobMetricsOperator.defer")
     def test_execute_deferred_with_correct_trigger(self, mock_defer, deferrable_operator):
         """Test that deferrable operator creates trigger with correct parameters."""
         deferrable_operator.execute(mock.MagicMock())
@@ -1120,17 +1120,17 @@ class TestDataflowGetMetricsOperatorExecuteDeferred:
         assert kwargs["method_name"] == GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME
 
 
-class TestDataflowGetMetricsOperatorExecuteComplete:
+class TestDataflowJobMetricsOperatorExecuteComplete:
     """Test execute_complete callback."""
 
     def test_execute_complete_raises_when_event_is_none(self, sync_operator):
-        """Test that execute_complete raises AirflowException when event is None."""
-        with pytest.raises(AirflowException, match="No trigger event received"):
+        """Test that execute_complete raises RuntimeError when event is None."""
+        with pytest.raises(RuntimeError, match="No trigger event received"):
             sync_operator.execute_complete(context=mock.MagicMock(), event=None)
 
     def test_execute_complete_raises_on_error_status(self, sync_operator):
-        """Test that execute_complete raises AirflowException on error status."""
-        with pytest.raises(AirflowException, match="Trigger failed"):
+        """Test that execute_complete raises RuntimeError on error status."""
+        with pytest.raises(RuntimeError, match="Trigger failed"):
             sync_operator.execute_complete(
                 context=mock.MagicMock(),
                 event={"status": "error", "message": "Job failed"},
