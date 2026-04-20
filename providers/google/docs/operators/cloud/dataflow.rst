@@ -387,7 +387,7 @@ If the batch pipeline has already been completed successfully, then there is no 
 Collecting Dataflow Job Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To collect and route metrics from a running Dataflow job, use :class:`~airflow.providers.google.cloud.operators.dataflow.DataflowGetMetricsOperator`.
+To collect and route metrics from a running Dataflow job, use :class:`~airflow.providers.google.cloud.operators.dataflow.DataflowJobMetricsOperator`.
 This operator fetches job metrics and routes them to Pub/Sub, BigQuery, or both destinations for real-time monitoring and historical analysis.
 If your BigQuery dataset is regional, set ``bq_dataset_location`` on the operator so the hook uses the matching location.
 
