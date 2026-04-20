@@ -1301,7 +1301,7 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
         try:
             _, topic_project, _, topic_id = self.pubsub_topic.split("/")
         except ValueError:
-            raise AirflowException(
+            raise ValueError(
                 f"pubsub_topic must be 'projects/<project>/topics/<topic>', got: {self.pubsub_topic}"
             )
 
@@ -1423,7 +1423,7 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
 
     def execute(self, context: Context) -> dict[str, Any] | None:
         self.log.info(
-            "DataflowGetMetricsOperator | job_id=%s project=%s location=%s "
+            "DataflowJobMetricsOperator | job_id=%s project=%s location=%s "
             "deferrable=%s pubsub_topic=%s bq=%s.%s.%s",
             self.job_id, 
             self.project_id, 
@@ -1436,8 +1436,8 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
         )
 
         if not self.location:
-            raise AirflowException(
-                "DataflowGetMetricsOperator requires 'location' to be set "
+            raise ValueError(
+                "DataflowJobMetricsOperator requires 'location' to be set "
                 "(e.g. 'us-central1'). Dataflow job regions cannot be inferred."
             )
 
@@ -1459,8 +1459,8 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
 
     def execute_complete(self, context: Context, event: dict[str, Any] | None = None) -> dict[str, Any]:
         if event is None:
-            raise AirflowException(f"No trigger event received for job_id={self.job_id}")
+            raise RuntimeError(f"No trigger event received for job_id={self.job_id}")
         if event.get("status") == "error":
-            raise AirflowException(f"Trigger failed for job_id={self.job_id}: {event.get('message')}")
+            raise RuntimeError(f"Trigger failed for job_id={self.job_id}: {event.get('message')}")
         return self._route(self._normalise(event.get("result", {})), context)
 
