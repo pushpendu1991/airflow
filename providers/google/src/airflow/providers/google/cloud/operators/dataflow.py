@@ -1183,7 +1183,6 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
     """
     Fetches metrics for a single Dataflow job and executes a callback function with the result.
 
-
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
         :ref:`howto/operator:DataflowJobMetricsOperator`
@@ -1319,5 +1318,4 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
             self.log.info(event.get("message"))
             result = event.get("result")
             return result if self.callback is None else self.callback(result)
-        raise RuntimeError(f"Sensor failed with the following message: {event['message']}")
-
+        raise RuntimeError(f"Operator failed with the following message: {event['message']}")
