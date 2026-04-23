@@ -153,6 +153,7 @@ SAMPLE_METRICS = {
     ]
 }
 
+
 class TestDataflowTemplatedJobStartOperator:
     @pytest.fixture
     def sync_operator(self):
@@ -817,6 +818,7 @@ class TestDataflowDeletePipelineOperator:
                 "error": {"message": "example error"}
             }
 
+
 @pytest.fixture
 def sync_operator():
     """Create a synchronous DataflowJobMetricsOperator instance."""
@@ -905,7 +907,10 @@ class TestDataflowJobMetricsOperatorExecuteSync:
             deferrable=False,
             gcp_conn_id=GCP_CONN_ID,
         )
-        mock_hook.return_value.get_job.return_value = {"id": JOB_ID, "currentState": DataflowJobStatus.JOB_STATE_DONE}
+        mock_hook.return_value.get_job.return_value = {
+            "id": JOB_ID, 
+            "currentState": DataflowJobStatus.JOB_STATE_DONE
+        }
 
         with pytest.raises(
             AirflowException,
