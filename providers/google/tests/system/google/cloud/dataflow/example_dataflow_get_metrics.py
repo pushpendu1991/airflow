@@ -26,6 +26,8 @@ This DAG demonstrates how to use DataflowJobMetricsOperator to:
 5. Consume metrics from XCom in downstream tasks
 """
 
+from __future__ import annotations
+
 import os
 from datetime import datetime
 
@@ -51,11 +53,7 @@ def consume_metrics_from_xcom(**context):
     """Consume and display metrics count from XCom."""
     task_instance = context["task_instance"]
     
-    # Get metrics from XCom
-    metrics = task_instance.xcom_pull(
-        task_ids="collect_metrics_no_callback",
-        key="metrics"
-    )
+    metrics = task_instance.xcom_pull(task_ids="collect_metrics_no_callback", key="metrics")
     
     metric_list = metrics if isinstance(metrics, list) else []
     print(f"Metrics count from XCom: {len(metric_list)}")
@@ -119,10 +117,19 @@ with DAG(
 
     end_task = EmptyOperator(task_id="end_task")
 
-    start_task >> [
-        collect_metrics_with_callback,
-        collect_metrics_no_callback,
-        collect_metrics_deferrable,
-    ] >> consume_metrics >> end_task
+    (
+        start_task 
+        >> [
+            collect_metrics_with_callback,
+            collect_metrics_no_callback,
+            collect_metrics_deferrable,
+        ] 
+        >> consume_metrics 
+        >> end_task
+    )
 
+
+from tests_common.test_utils.system_tests import get_test_run  # noqa: E402
+ 
++# Needed to run the example DAG with pytest (see: contributing-docs/testing/system_tests.rst)
 test_run = get_test_run(dag)
