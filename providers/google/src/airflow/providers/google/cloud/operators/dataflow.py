@@ -19,10 +19,8 @@
 
 from __future__ import annotations
 
-import json
 import uuid
-from collections.abc import Sequence
-from datetime import datetime, timezone
+from collections.abc import Callable, Sequence
 from enum import Enum
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -30,12 +28,11 @@ from typing import TYPE_CHECKING, Any
 from googleapiclient.errors import HttpError
 
 from airflow.providers.common.compat.sdk import AirflowException, conf
-from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 from airflow.providers.google.cloud.hooks.dataflow import (
     DEFAULT_DATAFLOW_LOCATION,
     DataflowHook,
+    DataflowJobStatus,
 )
-from airflow.providers.google.cloud.hooks.pubsub import PubSubHook
 from airflow.providers.google.cloud.links.dataflow import DataflowJobLink, DataflowPipelineLink
 from airflow.providers.google.cloud.operators.cloud_base import GoogleCloudBaseOperator
 from airflow.providers.google.cloud.triggers.dataflow import (
@@ -1184,56 +1181,43 @@ class DataflowDeletePipelineOperator(GoogleCloudBaseOperator):
 
 class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
     """
-    Fetches metrics for a Dataflow job and routes the result to one or more
-    destinations based on what the caller provides.
-    Currently it only supports pre-defined bigquery table schema.
-    CREATE TABLE IF NOT EXISTS `my-project.monitoring.dataflow_metrics` (
-    job_id        STRING    NOT NULL,
-    metric_name   STRING,
-    origin        STRING,
-    context       JSON,
-    scalar        FLOAT64,
-    collected_at  TIMESTAMP NOT NULL
-    )
-    PARTITION BY DATE(collected_at);
-    Routing logic
-    ─────────────
-    • pubsub_topic provided              → publish full metrics to Pub/Sub
-    • bq_dataset + bq_table provided     → stream full metrics rows into BigQuery
-    • both provided                      → publish to both (fan-out)
-    • neither provided                   → log a warning; metrics are NOT stored
-    • XCom always                        → a lean summary dict only (never the
-                                           full payload), keeping the metadata DB lean
-    Execution modes
-    ───────────────
-    • deferrable=True            — defers to DataflowJobMetricsTrigger.
-    • deferrable=False           — blocks the worker (small/test jobs only).
-    • default behavior           — configuration-driven; if unset, defaults to
-                                   non-deferrable (``False``).
+    Fetches metrics for a single Dataflow job and executes a callback function with the result.
+
+
+    .. seealso::
+        For more information on how to use this operator, take a look at the guide:
+        :ref:`howto/operator:DataflowJobMetricsOperator`
+
     :param job_id: Dataflow job ID. Jinja-templated.
-    :param project_id: GCP project that owns the Dataflow job. Jinja-templated.
-    :param location: Dataflow job region. Jinja-templated.
-    :param pubsub_topic: Full Pub/Sub topic path:
-                         ``projects/<project>/topics/<topic>``. Jinja-templated.
-    :param bq_dataset: BigQuery dataset ID to write metrics into. Jinja-templated.
-    :param bq_dataset_location: BigQuery dataset location used by the hook. Jinja-templated.
-    :param bq_table: BigQuery table ID to write metrics into. Jinja-templated.
-    :param bq_project: BigQuery project (defaults to ``project_id``). Jinja-templated.
-    :param gcp_conn_id: Airflow GCP connection.
-    :param impersonation_chain: Optional SA to impersonate.
-    :param deferrable: When True, defer to Triggerer.
-    :param poll_sleep: Triggerer poll interval in seconds.
+    :param callback: Callback function that accepts the metrics list.
+        If provided, the function is called with the metrics and its result is returned.
+        If not provided, metrics are pushed to XCom and returned directly.
+        See: https://cloud.google.com/dataflow/docs/reference/rest/v1b3/MetricUpdate
+    :param fail_on_terminal_state: If set to True, raises an exception when the job
+        is in a terminal state. Default is False.
+    :param project_id: Optional, the Google Cloud project ID in which the Dataflow job runs.
+        If set to None or missing, the default project_id from the Google Cloud connection is used.
+        Jinja-templated.
+    :param location: The location of the Dataflow job (for example europe-west1).
+        See: https://cloud.google.com/dataflow/docs/concepts/regional-endpoints
+        Jinja-templated.
+    :param gcp_conn_id: The connection ID to use connecting to Google Cloud.
+    :param impersonation_chain: Optional service account to impersonate using
+        short-term credentials, or chained list of accounts required to get the
+        access_token of the last account in the list, which will be impersonated in the
+        request. If set as a string, the account must grant the originating account
+        the Service Account Token Creator IAM role. If set as a sequence, the identities
+        from the list must grant Service Account Token Creator IAM role to the directly
+        preceding identity, with first account from the list granting this role to the
+        originating account (templated).
+    :param deferrable: If True, run the operator in the deferrable mode.
+    :param poll_interval: Time (seconds) to wait between two consecutive calls to check the job.
     """
 
     template_fields: Sequence[str] = (
         "job_id",
         "project_id",
         "location",
-        "pubsub_topic",
-        "bq_dataset",
-        "bq_dataset_location",
-        "bq_table",
-        "bq_project",
     )
     ui_color = "#4285F4"
 
@@ -1241,46 +1225,26 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
         self,
         *,
         job_id: str,
+        callback: Callable | None = None,
+        fail_on_terminal_state: bool = True,
         project_id: str = PROVIDE_PROJECT_ID,
-        location: str | None = DEFAULT_DATAFLOW_LOCATION,
-        pubsub_topic: str | None = None,
-        bq_dataset: str | None = None,
-        bq_dataset_location: str | None = None,
-        bq_table: str | None = None,
-        bq_project: str | None = None,
+        location: str = DEFAULT_DATAFLOW_LOCATION,
         gcp_conn_id: str = "google_cloud_default",
         impersonation_chain: str | Sequence[str] | None = None,
         deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
-        poll_sleep: int = 10,
-        fail_on_terminal_state: bool = False,
+        poll_interval: int = 10,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.job_id = job_id
         self.project_id = project_id
+        self.callback = callback
+        self.fail_on_terminal_state = fail_on_terminal_state
         self.location = location
-        self.pubsub_topic = pubsub_topic
-        self.bq_dataset = bq_dataset
-        self.bq_dataset_location = bq_dataset_location
-        self.bq_table = bq_table
-        self.bq_project = bq_project or project_id
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
         self.deferrable = deferrable
-        self.poll_sleep = poll_sleep
-        self.fail_on_terminal_state = fail_on_terminal_state
-
-    @staticmethod
-    def _normalise(raw: Any) -> dict[str, Any]:
-        if isinstance(raw, dict):
-            return raw
-        if isinstance(raw, list):
-            return {"metrics": raw}
-        try:
-            return type(raw).to_dict(raw)
-        except AttributeError:
-            import proto
-            return proto.Message.to_dict(raw)
+        self.poll_interval = poll_interval
 
     @cached_property
     def hook(self) -> DataflowHook:
@@ -1289,150 +1253,22 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
             impersonation_chain=self.impersonation_chain,
         )
 
-    def _fetch_metrics(self) -> dict[str, Any]:
-        raw = self.hook.fetch_job_metrics_by_id(
+    def _fetch_metrics(self) -> Any:
+        """Fetch metrics from the Dataflow job."""
+        return self.hook.fetch_job_metrics_by_id(
             job_id=self.job_id,
             project_id=self.project_id,
             location=self.location,
         )
-        return self._normalise(raw)
 
-    def _publish_to_pubsub(self, metrics: dict[str, Any]) -> int:
-        try:
-            _, topic_project, _, topic_id = self.pubsub_topic.split("/")
-        except ValueError:
-            raise ValueError(
-                f"pubsub_topic must be 'projects/<project>/topics/<topic>', got: {self.pubsub_topic}"
-            )
-
-        metric_entries = metrics.get("metrics", [])
-        payload = json.dumps(
-            {"job_id": self.job_id, "metrics": metric_entries},
-            default=str,
-        ).encode("utf-8")
-
-        hook = PubSubHook(
-            gcp_conn_id=self.gcp_conn_id,
-            impersonation_chain=self.impersonation_chain,
-        )
-        hook.publish(
-            project_id=topic_project,
-            topic=topic_id,
-            messages=[{"data": payload}],
-        )
-        published_count = len(metric_entries)
+    def execute(self, context: Context) -> Any:
+        """Airflow runs this method on the worker and defers using the trigger."""
         self.log.info(
-            "Published %d metric entries for job %s → topic %s",
-            published_count, 
-            self.job_id, 
-            self.pubsub_topic,
-        )
-        return published_count
-
-    def _publish_to_bq(self, metrics: dict[str, Any]) -> int:
-        collected_at = datetime.now(timezone.utc).isoformat()
-        rows = []
-        for entry in metrics.get("metrics", []):
-            name_obj = entry.get("name", {})
-
-            scalar_obj = entry.get("scalar")
-            if scalar_obj is None:
-                scalar = None
-            elif isinstance(scalar_obj, (int, float)):
-                scalar = float(scalar_obj)
-            elif isinstance(scalar_obj, dict):
-                raw = scalar_obj.get("integer_value")
-                if raw is None:
-                    raw = scalar_obj.get("floatValue")
-                scalar = float(raw) if raw is not None else None
-            else:
-                self.log.warning(
-                    "Unexpected scalar type %s for metric %s, skipping scalar value.",
-                    type(scalar_obj).__name__, 
-                    name_obj.get("name"),
-                )
-                scalar = None
-
-            rows.append(
-                {
-                    "job_id": self.job_id,
-                    "metric_name": name_obj.get("name", ""),
-                    "origin": name_obj.get("origin", ""),
-                    "context": json.dumps(name_obj.get("context", {})) if name_obj.get("context") else None,
-                    "scalar": scalar,
-                    "collected_at": collected_at,
-                }
-            )
-
-        if not rows:
-            self.log.warning("No metric entries to write to BigQuery for job %s", self.job_id)
-            return 0
-
-        hook = BigQueryHook(
-            gcp_conn_id=self.gcp_conn_id,
-            impersonation_chain=self.impersonation_chain,
-            location=self.bq_dataset_location,
-        )
-        hook.insert_all(
-            project_id=self.bq_project,
-            dataset_id=self.bq_dataset,
-            table_id=self.bq_table,
-            rows=rows,
-            ignore_unknown_values=True,
-            skip_invalid_rows=False,
-        )
-        self.log.info(
-            "Streamed %d metric rows for job %s → %s.%s.%s",
-            len(rows), 
+            "DataflowJobMetricsOperator | job_id=%s project=%s location=%s deferrable=%s",
             self.job_id,
-            self.bq_project, 
-            self.bq_dataset, 
-            self.bq_table,
-        )
-        return len(rows)
-
-    def _route(self, metrics: dict[str, Any], context: Context) -> dict[str, Any]:
-        has_pubsub = bool(self.pubsub_topic)
-        has_bq = bool(self.bq_dataset and self.bq_table)
-        metric_count = len(metrics.get("metrics", []))
-
-        if not has_pubsub and not has_bq:
-            self.log.warning(
-                "No destination configured for job %s metrics (%d entries). "
-                "Provide pubsub_topic and/or bq_dataset+bq_table to persist results.",
-                self.job_id, 
-                metric_count,
-            )
-
-        pubsub_metrics_published = self._publish_to_pubsub(metrics) if has_pubsub else None
-        bq_rows_written = self._publish_to_bq(metrics) if has_bq else None
-
-        summary = {
-            "job_id": self.job_id,
-            "metric_count": metric_count,
-            "pubsub_topic": self.pubsub_topic if has_pubsub else None,
-            "pubsub_metrics_published": pubsub_metrics_published,
-            "bq_destination": (
-                f"{self.bq_project}.{self.bq_dataset}.{self.bq_table}" if has_bq else None
-            ),
-            "bq_rows_written": bq_rows_written,
-        }
-        context["task_instance"].xcom_push(key="metrics_summary", value=summary)
-        self.log.info("metrics_summary pushed to XCom: %s", summary)
-        return summary
-
-    def execute(self, context: Context) -> dict[str, Any] | None:
-        self.log.info(
-            "DataflowJobMetricsOperator | job_id=%s project=%s location=%s "
-            "deferrable=%s pubsub_topic=%s bq=%s.%s.%s",
-            self.job_id, 
-            self.project_id, 
-            self.location, 
+            self.project_id,
+            self.location,
             self.deferrable,
-            self.pubsub_topic, 
-            self.bq_project, 
-            self.bq_dataset, 
-            self.bq_table,
         )
 
         if not self.location:
@@ -1442,7 +1278,20 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
             )
 
         if not self.deferrable:
-            return self._route(self._fetch_metrics(), context)
+            if self.fail_on_terminal_state:
+                job = self.hook.get_job(
+                    job_id=self.job_id,
+                    project_id=self.project_id,
+                    location=self.location,
+                )
+                job_status = job["currentState"]
+                if job_status in DataflowJobStatus.TERMINAL_STATES:
+                    raise RuntimeError(
+                        f"Job with id '{self.job_id}' is already in terminal state: {job_status}"
+                    )
+
+            result = self._fetch_metrics()
+            return result["metrics"] if self.callback is None else self.callback(result["metrics"])
 
         self.defer(
             trigger=DataflowJobMetricsTrigger(
@@ -1451,16 +1300,24 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
                 location=self.location,
                 gcp_conn_id=self.gcp_conn_id,
                 impersonation_chain=self.impersonation_chain,
-                poll_sleep=self.poll_sleep,
+                poll_sleep=self.poll_interval,
                 fail_on_terminal_state=self.fail_on_terminal_state,
             ),
             method_name=GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME,
         )
 
-    def execute_complete(self, context: Context, event: dict[str, Any] | None = None) -> dict[str, Any]:
-        if event is None:
-            raise RuntimeError(f"No trigger event received for job_id={self.job_id}")
-        if event.get("status") == "error":
-            raise RuntimeError(f"Trigger failed for job_id={self.job_id}: {event.get('message')}")
-        return self._route(self._normalise(event.get("result", {})), context)
+    def execute_complete(self, context: Context, event: dict[str, Any] | None = None) -> Any:
+        """
+        Execute this method when the task resumes its execution on the worker after deferral.
+
+        If the trigger returns an event with success status - passes the event
+        result to the callback function. Returns the event result if no callback
+        function is provided. If the trigger returns an event with error status
+        - raises an exception.
+        """
+        if event["status"] == "success":
+            self.log.info(event.get("message"))
+            result = event.get("result")
+            return result if self.callback is None else self.callback(result)
+        raise RuntimeError(f"Sensor failed with the following message: {event['message']}")
 
