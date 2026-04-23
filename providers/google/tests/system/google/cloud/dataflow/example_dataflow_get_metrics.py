@@ -19,11 +19,11 @@
 Example Airflow DAG for Google Cloud Dataflow Get Metrics Operator.
 
 This DAG demonstrates how to use DataflowJobMetricsOperator to:
-1. Collect metrics from a running Dataflow job
-2. Route metrics to Pub/Sub for real-time streaming
-3. Stream metrics into BigQuery for historical analysis
-4. Use both destinations simultaneously (fan-out)
-5. Consume metrics summary from XCom in downstream tasks
+1. Collect metrics from a Dataflow job
+2. Pass metrics to a callback function for processing
+3. Return metrics directly for XCom consumption when no callback is provided
+4. Use deferrable mode for async execution
+5. Consume metrics from XCom in downstream tasks
 """
 
 import os
@@ -34,41 +34,32 @@ from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.operators.dataflow import DataflowJobMetricsOperator
 
-from system.google import DEFAULT_GCP_SYSTEM_TEST_PROJECT_ID
-
 ENV_ID = os.environ.get("SYSTEM_TESTS_ENV_ID", "default")
-PROJECT_ID = os.environ.get("SYSTEM_TESTS_GCP_PROJECT") or DEFAULT_GCP_SYSTEM_TEST_PROJECT_ID
+PROJECT_ID = os.environ.get("SYSTEM_TESTS_GCP_PROJECT") or "test-project"
 DAG_ID = "dataflow_get_metrics"
 LOCATION = "us-central1"
-DATAFLOW_JOB_NAME = f"dataflow-example-job-{ENV_ID}"
-PUBSUB_TOPIC = f"projects/{PROJECT_ID}/topics/dataflow-metrics-{ENV_ID}"
-BQ_DATASET = "dataflow_metrics"
-BQ_TABLE = "job_metrics"
-BQ_PROJECT = PROJECT_ID
-BQ_DATASET_LOCATION = LOCATION
 
-def print_metrics_summary(**context):
-    """
-    Print the metrics summary pushed to XCom by DataflowJobMetricsOperator.
-    Demonstrates how to consume metrics data in downstream tasks.
-    """
+
+def process_metrics_callback(metrics):
+    """Callback function that processes metrics returned by the operator."""
+    metric_list = metrics if isinstance(metrics, list) else []
+    print(f"Metrics count from callback: {len(metric_list)}")
+    return {"processed_metrics_count": len(metric_list)}
+
+
+def consume_metrics_from_xcom(**context):
+    """Consume and display metrics count from XCom."""
     task_instance = context["task_instance"]
     
-    metrics_summary = task_instance.xcom_pull(task_ids="collect_metrics_bigquery", key="metrics_summary")
+    # Get metrics from XCom
+    metrics = task_instance.xcom_pull(
+        task_ids="collect_metrics_no_callback",
+        key="metrics"
+    )
     
-    if metrics_summary:
-        print("=" * 70)
-        print("DATAFLOW JOB METRICS SUMMARY")
-        print("=" * 70)
-        print(f"Job ID:                 {metrics_summary.get('job_id')}")
-        print(f"Metric Count:           {metrics_summary.get('metric_count')}")
-        print(f"BigQuery Destination:   {metrics_summary.get('bq_destination')}")
-        print(f"BigQuery Rows Written:  {metrics_summary.get('bq_rows_written')}")
-        print(f"Pub/Sub Topic:          {metrics_summary.get('pubsub_topic')}")
-        print(f"Pub/Sub Published:      {metrics_summary.get('pubsub_metrics_published')}")
-        print("=" * 70)
-    else:
-        print("No metrics summary found in XCom")
+    metric_list = metrics if isinstance(metrics, list) else []
+    print(f"Metrics count from XCom: {len(metric_list)}")
+
 
 with DAG(
     DAG_ID,
@@ -77,76 +68,61 @@ with DAG(
     catchup=False,
     tags=["example", "dataflow", "metrics"],
 ) as dag:
-
     start_task = EmptyOperator(task_id="start_task")
 
-    # [START howto_operator_dataflow_get_metrics_bigquery]
-    collect_metrics_bigquery = DataflowJobMetricsOperator(
-        task_id="collect_metrics_bigquery",
+    # [START howto_operator_dataflow_get_metrics_with_callback]
+    collect_metrics_with_callback = DataflowJobMetricsOperator(
+        task_id="collect_metrics_with_callback",
         job_id="{{ dag_run.conf.get('dataflow_job_id', 'test-job-id') }}",
         project_id=PROJECT_ID,
         location=LOCATION,
-        bq_dataset=BQ_DATASET,
-        bq_table=BQ_TABLE,
-        bq_dataset_location=BQ_DATASET_LOCATION,
-        bq_project=BQ_PROJECT,
+        callback=process_metrics_callback,
         deferrable=False,
+        fail_on_terminal_state=False,
         gcp_conn_id="google_cloud_default",
     )
-    # [END howto_operator_dataflow_get_metrics_bigquery]
+    # [END howto_operator_dataflow_get_metrics_with_callback]
 
-    # [START howto_operator_dataflow_get_metrics_pubsub_deferrable]
-    collect_metrics_pubsub = DataflowJobMetricsOperator(
-        task_id="collect_metrics_pubsub",
-        job_id="{{ dag_run.conf['dataflow_job_id'] or 'test-job-id' }}",
+    # [START howto_operator_dataflow_get_metrics_no_callback]
+    collect_metrics_no_callback = DataflowJobMetricsOperator(
+        task_id="collect_metrics_no_callback",
+        job_id="{{ dag_run.conf.get('dataflow_job_id', 'test-job-id') }}",
         project_id=PROJECT_ID,
         location=LOCATION,
-        pubsub_topic=PUBSUB_TOPIC,
-        deferrable=True,
-        poll_sleep=10,
+        # callback=None (default) - metrics will be returned directly
+        deferrable=False,
+        fail_on_terminal_state=False,
         gcp_conn_id="google_cloud_default",
     )
-    # [END howto_operator_dataflow_get_metrics_pubsub_deferrable]
+    # [END howto_operator_dataflow_get_metrics_no_callback]
 
-    # [START howto_operator_dataflow_get_metrics_multi_destination]
-    collect_metrics_multi_destination = DataflowJobMetricsOperator(
-        task_id="collect_metrics_fanout",
-        job_id="{{ dag_run.conf['dataflow_job_id'] or 'test-job-id' }}",
+    # [START howto_operator_dataflow_get_metrics_deferrable]
+    collect_metrics_deferrable = DataflowJobMetricsOperator(
+        task_id="collect_metrics_deferrable",
+        job_id="{{ dag_run.conf.get('dataflow_job_id', 'test-job-id') }}",
         project_id=PROJECT_ID,
         location=LOCATION,
-        pubsub_topic=PUBSUB_TOPIC,
-        bq_dataset=BQ_DATASET,
-        bq_table=BQ_TABLE,
-        bq_dataset_location=BQ_DATASET_LOCATION,
-        bq_project=BQ_PROJECT,
+        callback=process_metrics_callback,
         deferrable=True,
-        poll_sleep=10,
+        poll_interval=10,
+        fail_on_terminal_state=False,
         gcp_conn_id="google_cloud_default",
     )
-    # [END howto_operator_dataflow_get_metrics_multi_destination]
+    # [END howto_operator_dataflow_get_metrics_deferrable]
 
-    # [START howto_operator_dataflow_get_metrics_xcom_processing]
-    process_metrics_summary = PythonOperator(
-        task_id="process_metrics_summary",
-        python_callable=print_metrics_summary,
+    # [START howto_operator_dataflow_get_metrics_consume_xcom]
+    consume_metrics = PythonOperator(
+        task_id="consume_metrics_from_xcom",
+        python_callable=consume_metrics_from_xcom,
     )
-    # [END howto_operator_dataflow_get_metrics_xcom_processing]
+    # [END howto_operator_dataflow_get_metrics_consume_xcom]
 
     end_task = EmptyOperator(task_id="end_task")
 
     start_task >> [
-        collect_metrics_bigquery,
-        collect_metrics_pubsub,
-        collect_metrics_multi_destination,
-    ] >> process_metrics_summary >> end_task
+        collect_metrics_with_callback,
+        collect_metrics_no_callback,
+        collect_metrics_deferrable,
+    ] >> consume_metrics >> end_task
 
-from tests_common.test_utils.watcher import watcher  # noqa: E402
-
-# This test needs watcher to properly mark success/failure
-# when "teardown" task with trigger rule is part of the DAG
-list(dag.tasks) >> watcher()
-
-from tests_common.test_utils.system_tests import get_test_run  # noqa: E402
-
-# Needed to run the example DAG with pytest (see: tests/system/README.md#run_via_pytest)
 test_run = get_test_run(dag)
