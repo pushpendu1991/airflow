@@ -384,8 +384,10 @@ For batch pipelines, if a job is currently running and you want to update its co
 
 If the batch pipeline has already been completed successfully, then there is no running job to update; the new configuration will only be applied to the next job submission.
 
+.. _howto/operator:DataflowJobMetricsOperator:
+
 Collecting Dataflow Job Metrics
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To collect and process metrics from a running Dataflow job, use :class:`~airflow.providers.google.cloud.operators.dataflow.DataflowJobMetricsOperator`.
 This operator fetches job metrics and can either pass them to a callback function for processing or return them directly for XCom consumption by downstream tasks.
