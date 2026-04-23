@@ -387,36 +387,35 @@ If the batch pipeline has already been completed successfully, then there is no 
 Collecting Dataflow Job Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To collect and route metrics from a running Dataflow job, use :class:`~airflow.providers.google.cloud.operators.dataflow.DataflowJobMetricsOperator`.
-This operator fetches job metrics and routes them to Pub/Sub, BigQuery, or both destinations for real-time monitoring and historical analysis.
-If your BigQuery dataset is regional, set ``bq_dataset_location`` on the operator so the hook uses the matching location.
+To collect and process metrics from a running Dataflow job, use :class:`~airflow.providers.google.cloud.operators.dataflow.DataflowJobMetricsOperator`.
+This operator fetches job metrics and can either pass them to a callback function for processing or return them directly for XCom consumption by downstream tasks.
 
-Here is an example of collecting Dataflow job metrics and streaming them to BigQuery:
-
-.. exampleinclude::
-    /../../google/tests/system/google/cloud/dataflow/example_dataflow_get_metrics.py
-    :language: python
-    :dedent: 4
-    :start-after: [START howto_operator_dataflow_get_metrics_bigquery]
-    :end-before: [END howto_operator_dataflow_get_metrics_bigquery]
-
-You can also route metrics to multiple destinations simultaneously (Pub/Sub and BigQuery):
+Here is an example of collecting Dataflow job metrics with a callback function:
 
 .. exampleinclude::
     /../../google/tests/system/google/cloud/dataflow/example_dataflow_get_metrics.py
     :language: python
     :dedent: 4
-    :start-after: [START howto_operator_dataflow_get_metrics_multi_destination]
-    :end-before: [END howto_operator_dataflow_get_metrics_multi_destination]
+    :start-after: [START howto_operator_dataflow_get_metrics_with_callback]
+    :end-before: [END howto_operator_dataflow_get_metrics_with_callback]
 
-For deferrable (async) mode which releases the worker slot:
+You can also collect metrics without a callback, which will return them directly for downstream consumption:
 
 .. exampleinclude::
     /../../google/tests/system/google/cloud/dataflow/example_dataflow_get_metrics.py
     :language: python
     :dedent: 4
-    :start-after: [START howto_operator_dataflow_get_metrics_pubsub_deferrable]
-    :end-before: [END howto_operator_dataflow_get_metrics_pubsub_deferrable]
+    :start-after: [START howto_operator_dataflow_get_metrics_no_callback]
+    :end-before: [END howto_operator_dataflow_get_metrics_no_callback]
+
+For deferrable (async) mode which releases the worker slot during job monitoring:
+
+.. exampleinclude::
+    /../../google/tests/system/google/cloud/dataflow/example_dataflow_get_metrics.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_dataflow_get_metrics_deferrable]
+    :end-before: [END howto_operator_dataflow_get_metrics_deferrable]
 
 See the `Dataflow metrics documentation <https://cloud.google.com/dataflow/docs/guides/using-monitoring-intf/>`__ for more information.
 
