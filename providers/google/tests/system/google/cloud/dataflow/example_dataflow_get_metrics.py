@@ -52,9 +52,7 @@ def process_metrics_callback(metrics):
 def consume_metrics_from_xcom(**context):
     """Consume and display metrics count from XCom."""
     task_instance = context["task_instance"]
-    
     metrics = task_instance.xcom_pull(task_ids="collect_metrics_no_callback", key="metrics")
-    
     metric_list = metrics if isinstance(metrics, list) else []
     print(f"Metrics count from XCom: {len(metric_list)}")
 
