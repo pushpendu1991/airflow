@@ -909,7 +909,7 @@ class TestDataflowJobMetricsOperatorExecuteSync:
         )
         
         mock_hook.return_value.get_job.return_value = {
-            "id": JOB_ID, 
+            "id": JOB_ID,
             "currentState": DataflowJobStatus.JOB_STATE_DONE,
         }
 
