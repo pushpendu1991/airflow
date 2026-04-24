@@ -118,18 +118,18 @@ with DAG(
     end_task = EmptyOperator(task_id="end_task")
 
     (
-        start_task 
+        start_task
         >> [
             collect_metrics_with_callback,
             collect_metrics_no_callback,
             collect_metrics_deferrable,
-        ] 
-        >> consume_metrics 
+        ]
+        >> consume_metrics
         >> end_task
     )
 
 
 from tests_common.test_utils.system_tests import get_test_run  # noqa: E402
- 
-+# Needed to run the example DAG with pytest (see: contributing-docs/testing/system_tests.rst)
+
+# Needed to run the example DAG with pytest (see: contributing-docs/testing/system_tests.rst)
 test_run = get_test_run(dag)
