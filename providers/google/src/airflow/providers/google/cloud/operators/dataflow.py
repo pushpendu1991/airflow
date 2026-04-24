@@ -1306,7 +1306,7 @@ class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
             method_name=GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME,
         )
 
-    def execute_complete(self, context: Context, event: dict[str, Any] | None = None) -> Any:
+    def execute_complete(self, context: Context, event: dict[str, str | list]) -> Any:
         """
         Execute this method when the task resumes its execution on the worker after deferral.
 
