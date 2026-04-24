@@ -1179,6 +1179,7 @@ class DataflowDeletePipelineOperator(GoogleCloudBaseOperator):
 
         return None
 
+
 class DataflowJobMetricsOperator(GoogleCloudBaseOperator):
     """
     Fetches metrics for a single Dataflow job and executes a callback function with the result.
