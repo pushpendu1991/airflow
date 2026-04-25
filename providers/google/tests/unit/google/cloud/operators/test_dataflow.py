@@ -907,7 +907,7 @@ class TestDataflowJobMetricsOperatorExecuteSync:
             deferrable=False,
             gcp_conn_id=GCP_CONN_ID,
         )
-        
+
         mock_hook.return_value.get_job.return_value = {
             "id": JOB_ID,
             "currentState": DataflowJobStatus.JOB_STATE_DONE,
